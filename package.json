@@ -18,6 +18,7 @@
   ],
   "files": [
     "src/",
+    "lib/",
     "index.js"
   ],
   "author": "Chung Leong",
