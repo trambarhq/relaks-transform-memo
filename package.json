@@ -1,0 +1,36 @@
+{
+  "name": "relaks-transform-memo",
+  "version": "2.0.0",
+  "description": "Babel plugin that automatically call Relaks.memo() on exported functions",
+  "main": "./lib/index.js",
+  "scripts": {
+    "test": "mocha",
+    "test:watch": "mocha --watch",
+    "rollup": "rollup -c"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:trambarhq/relaks-transform-memo.git"
+  },
+  "keywords": [
+    "relaks",
+    "babel"
+  ],
+  "files": [
+    "src/",
+    "index.js"
+  ],
+  "author": "Chung Leong",
+  "license": "MIT",
+  "homepage": "https://github.com/trambarhq/relaks-transform-memo",
+  "devDependencies": {
+    "@babel/core": "^7.8.4",
+    "@babel/preset-env": "^7.8.4",
+    "@babel/runtime": "^7.8.4",
+    "@babel/standalone": "^7.8.6",
+    "chai": "^4.2.0",
+    "mocha": "^7.0.1",
+    "rollup": "^1.31.1",
+    "rollup-plugin-babel": "^4.3.3"
+  }
+}
