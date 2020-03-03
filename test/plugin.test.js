@@ -37,7 +37,7 @@ export { Hello };
     const transpiled = transpile(code);
     expect(transpiled).to.equal(expected);
   })
-  it('should correct handle inline export statement', function() {
+  it('should correctly handle inline export statement', function() {
     const code = `
 import Relaks, { useProgress } from 'relaks';
 
@@ -52,6 +52,48 @@ export const Hello = Relaks.memo(async function Hello(props) {
   const [show] = useProgress();
   show(React.createElement("div", null, "Test"));
 });
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should correctly handle default export', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+export default async function Hello(props) {
+  const [ show ] = useProgress();
+  show(<div>Test</div>);
+}
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+const Hello = Relaks.memo(async function Hello(props) {
+  const [show] = useProgress();
+  show(React.createElement("div", null, "Test"));
+});
+export default Hello;
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should correctly handle default export of anonymous function', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+export default async function(props) {
+  const [ show ] = useProgress();
+  show(<div>Test</div>);
+}
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+
+const __defMemoized0 = Relaks.memo(async function (props) {
+  const [show] = useProgress();
+  show(React.createElement("div", null, "Test"));
+});
+
+export default __defMemoized0;
     `.trim();
     const transpiled = transpile(code);
     expect(transpiled).to.equal(expected);

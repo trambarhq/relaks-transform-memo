@@ -1,5 +1,5 @@
 import { transform, registerPlugin } from '@babel/standalone';
-import transformMemo from '../../lib/index.js';
+import transformMemo from '../../src/index.js';
 
 registerPlugin('transform-memo', transformMemo);
 
@@ -16,5 +16,6 @@ input.addEventListener('input', () => {
     const transpiled = result.code;
     output.value = transpiled;
   } catch (err) {
+    console.log(err.message)
   }
 });

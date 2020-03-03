@@ -36,6 +36,9 @@ export default (babel) => {
         // hook wasn't imported
         return;
       }
+      if (path.parent.type === 'ExportDefaultDeclaration') {
+        return;
+      }
       const { id, params, body, async } = path.node;
       if (async) {
         state.hookCalled = false;
@@ -54,7 +57,30 @@ export default (babel) => {
           state.memoized = true;
         }
       }
-    }
+    },
+    ExportDefaultDeclaration(path, state) {
+      if (!state.hook) {
+        return;
+      }
+      const { type, id, params, body, async } = path.node.declaration;
+      if (type === 'FunctionDeclaration' && async) {
+        state.hookCalled = false;
+        path.traverse(useProgressVisitor, state);
+        if (state.hookCalled) {
+          const cid = id || t.identifier('__defMemoized' + state.defaultExport++);
+          const relaks = t.identifier(state.relaks);
+          const memo = t.identifier('memo');
+          const callee = t.memberExpression(relaks, memo);
+          const funcExpr = t.functionExpression(id, params, body, false, true);
+          const call = t.callExpression(callee, [ funcExpr ]);
+          const varDecl = t.variableDeclarator(cid, call);
+          const memoized = t.variableDeclaration('const', [ varDecl ]);
+          const exportDefault = t.exportDefaultDeclaration(cid);
+          path.replaceWithMultiple([ memoized, exportDefault ]);
+          state.memoized = true;
+        }
+      }
+    },
   };
   const programVisitor = {
     Program(path) {
@@ -65,6 +91,7 @@ export default (babel) => {
         relaks: 'Relaks',
         importSpecifiers: null,
         defaultSpecifier: null,
+        defaultExport: 0,
       };
       path.traverse(memoizationVisitor, state);
       if (state.memoized && !state.defaultSpecifier) {
