@@ -3,7 +3,6 @@ Relaks-transform-memo
 This [Babel](https://babeljs.io/) plugin simplifies development of [Relaks](https://github.com/trambarhq/relaks) application by automatically memoizing asynchronous components.
 
 Before:
-
 ```javascript
 import { useProgress } from 'relaks';
 
@@ -15,7 +14,6 @@ export async function Widget(props) {
 ```
 
 After:
-
 ```javascript
 import Relaks, { useProgress } from 'relaks';
 
@@ -38,4 +36,27 @@ This plugin is bundled with Relaks. There is no need to install it separately. I
             /* ... */
             'relaks/transform-memo',
           ]
+```
+
+Anonymous function
+------------------
+
+This plugin will also add names to components created through calls to `Relaks.memo()`, `Relaks.use()`, `React.memo()`, and `React.forwardRef()`.
+
+Before:
+```javascript
+import Relaks from 'relaks';
+
+const Widget = React.forwardRef((props, ref) => {
+  return <div ref={ref} />;
+});
+```
+
+After:
+```javascript
+import Relaks from 'relaks';
+
+const Widget = React.forwardRef(function Widget(props, ref) {
+  return <div ref={ref} />;
+});
 ```

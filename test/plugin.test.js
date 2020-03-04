@@ -226,5 +226,91 @@ export { Hello };
     const transpiled = transpile(code);
     expect(transpiled).to.equal(expected);
   })
+  it('should convert anonymous function passed to React.memo() to named function', function() {
+    const code = `
+import React from 'react';
 
+const Test = React.memo((props) => {
+  return <div/>;
+});
+    `.trim();
+    const expected = `
+import React from 'react';
+const Test = React.memo(function Test(props) {
+  return React.createElement("div", null);
+});
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should convert anonymous function passed to React.forwardRef() to named function', function() {
+    const code = `
+import React from 'react';
+
+const Test = React.forwardRef((props, ref) => {
+  return <div ref={ref}/>;
+});
+    `.trim();
+    const expected = `
+import React from 'react';
+const Test = React.forwardRef(function Test(props, ref) {
+  return React.createElement("div", {
+    ref: ref
+  });
+});
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should convert anonymous function passed to Relaks.memo() to named function', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+const Test = Relaks.memo(async (props) => {
+  const [ show ] = useProgress();
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+const Test = Relaks.memo(async function Test(props) {
+  const [show] = useProgress();
+});
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should convert anonymous function passed to Relaks.use() to named function', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+const Test = Relaks.use(async (props) => {
+  const [ show ] = useProgress();
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+const Test = Relaks.use(async function Test(props) {
+  const [show] = useProgress();
+});
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should ignore calls to React.memo() that are not assigned to variables', function() {
+    const code = `
+import React from 'react';
+
+React.memo((props) => {
+  return <div/>;
+});
+    `.trim();
+    const expected = `
+import React from 'react';
+React.memo(props => {
+  return React.createElement("div", null);
+});
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
 })

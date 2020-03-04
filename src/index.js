@@ -11,7 +11,7 @@ export default (babel) => {
   };
   const memoizationVisitor = {
     ImportDeclaration(path, state) {
-      const { specifiers } = path.node;
+      const { specifiers, source } = path.node;
       for (let specifier of specifiers) {
         const { type, imported, local } = specifier;
         if (type === 'ImportSpecifier') {
@@ -27,6 +27,10 @@ export default (babel) => {
               state.defaultSpecifier = def;
             }
             break;
+          }
+        } else if (type === 'ImportDefaultSpecifier') {
+          if (source.type === 'StringLiteral' && source.value === 'react') {
+            state.react = local.name;
           }
         }
       }
@@ -81,6 +85,32 @@ export default (babel) => {
         }
       }
     },
+    CallExpression(path, state) {
+      const { callee, arguments: args } = path.node;
+      if (callee.type === 'MemberExpression') {
+        if (args[0] && args[0].type === 'ArrowFunctionExpression') {
+          const [ arrowFunc, ...otherArgs ] = args;
+          const { object, property } = callee;
+          if (object.type === 'Identifier' && property.type === 'Identifier') {
+            let methods;
+            if (object.name === state.react) {
+              methods = [ 'memo', 'forwardRef' ];
+            } else if (object.name === state.relaks) {
+              methods = [ 'memo', 'use' ];
+            }
+            if (methods && methods.indexOf(property.name) !== -1) {
+              if (path.parent.type === 'VariableDeclarator') {
+                const { params, body, generator, async } = arrowFunc;
+                const id = t.identifier(path.parent.id.name);
+                const func = t.functionExpression(id, params, body, generator, async);
+                const call = t.callExpression(callee, [ func, ...otherArgs ]);
+                path.replaceWith(call);
+              }
+            }
+          }
+        }
+      }
+    }
   };
   const programVisitor = {
     Program(path) {
@@ -88,6 +118,7 @@ export default (babel) => {
         hook: null,
         hookCalled: false,
         memoized: false,
+        react: 'React',
         relaks: 'Relaks',
         importSpecifiers: null,
         defaultSpecifier: null,

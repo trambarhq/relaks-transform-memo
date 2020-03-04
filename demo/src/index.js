@@ -16,6 +16,5 @@ input.addEventListener('input', () => {
     const transpiled = result.code;
     output.value = transpiled;
   } catch (err) {
-    console.log(err.message)
   }
 });
