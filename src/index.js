@@ -1,6 +1,12 @@
 export default (babel) => {
   const { types: t } = babel;
 
+  /**
+   * Initiate state nad start transforming program in question
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
   function visitProgram(path, plugin) {
     let {
       hocs = [
@@ -19,21 +25,25 @@ export default (babel) => {
       hocs,
       hook: null,
       hookCalled: false,
-      memoized: false,
+      memoizedFunctions: [],
       react: 'React',
       relaks: 'Relaks',
       importSpecifiers: null,
       defaultSpecifier: null,
       defaultExport: 0,
+      lhsVarId: null,
     };
     const visitor = {
       ImportDeclaration: visitImportDeclaration,
       FunctionDeclaration: visitFunctionDeclaration,
       ExportDefaultDeclaration: visitExportDefaultDeclaration,
-      CallExpression: visitorCallExpressionArrowFunction,
+      VariableDeclarator: visitVariableDeclarator,
+      CallExpression: visitCallExpressionMemoized,
+      FunctionExpression: visitFunctionExpression,
+      ArrowFunctionExpression: visitFunctionExpression,
     };
     path.traverse(visitor, state);
-    if (state.memoized && !state.defaultSpecifier) {
+    if (state.memoizedFunctions.length > 0 && !state.defaultSpecifier) {
       // Need default import from Relaks
       const relaks = t.identifier(state.relaks);
       const def = t.importDefaultSpecifier(relaks);
@@ -41,6 +51,12 @@ export default (babel) => {
     }
   }
 
+  /**
+   * Look for Relaks and React import
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
   function visitImportDeclaration(path, state) {
     const { specifiers, source } = path.node;
     for (let specifier of specifiers) {
@@ -56,23 +72,43 @@ export default (babel) => {
           if (def) {
             state.relaks = def.local.name;
             state.defaultSpecifier = def;
+            if (state.relaks !== 'Relaks') {
+              state.hocs = state.hocs.map((qname) => {
+                return qname.replace(/^Relaks\./, state.relaks + '.');
+              });
+            }
           }
           break;
         }
       } else if (type === 'ImportDefaultSpecifier') {
         if (source.type === 'StringLiteral' && source.value === 'react') {
           state.react = local.name;
+          if (state.react !== 'React') {
+            state.hocs = state.hocs.map((qname) => {
+              return qname.replace(/^React\./, state.react + '.');
+            });
+          }
         }
       }
     }
   }
 
+  /**
+   * Look for function declarations and memoize those that use the Relaks hook
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
   function visitFunctionDeclaration(path, state) {
     if (!state.hook) {
       // hook wasn't imported
       return;
     }
     if (path.parent.type === 'ExportDefaultDeclaration') {
+      // default export need to be handled differently
+      // since the following is illegal:
+      //
+      // export default const Component = ...
       return;
     }
     const func = path.node;
@@ -83,43 +119,142 @@ export default (babel) => {
       const cid = func.id;
       const constDecl = declareConstant(cid, call, state);
       path.replaceWith(constDecl);
-      state.memoized = true;
     }
   }
 
+  /**
+   * Look for default export of async components and memoize them
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
   function visitExportDefaultDeclaration(path, state) {
     if (!state.hook) {
       return;
     }
     const func = path.node.declaration;
     if (func.type === 'FunctionDeclaration') {
-      if (func.async && isUsingHook(path, state))  {
+      if (func.async && isUsingHook(path, state)) {
         const call = memoizeFunction(func, state);
         const cid = func.id || generateDefaultId(state);
         const constDecl = declareConstant(cid, call, state);
         const exportDefault = t.exportDefaultDeclaration(cid);
         path.replaceWithMultiple([ constDecl, exportDefault ]);
-        state.memoized = true;
       }
     }
   }
 
-  function visitorCallExpressionArrowFunction(path, state) {
+  /**
+   * Look for explicit calls to Relaks.memo() and .use()
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
+  function visitCallExpressionMemoized(path, state) {
     const { callee, arguments: args } = path.node;
-    if (args[0] && args[0].type === 'ArrowFunctionExpression') {
-      const [ arrowFunc, ...otherArgs ] = args;
-      const qname = getFullyQualifiedName(callee);
-      if (qname && state.hocs.indexOf(qname) !== -1) {
-        if (path.parent.type === 'VariableDeclarator') {
-          const id = t.identifier(path.parent.id.name);
-          const func = nameArrowFunction(id, arrowFunc, state);
-          const call = t.callExpression(callee, [ func, ...otherArgs ]);
-          path.replaceWith(call);
+    if (callee.type === 'MemberExpression' && args.length > 0) {
+      const { object, property } = callee;
+      if (object.type === 'Identifier' && property.type === 'Identifier') {
+        if (object.name === state.relaks) {
+          if (property.name === 'memo' || property.name === 'use') {
+            const func = args[0];
+            if (func.type === 'FunctionExpression' || func.type === 'ArrowFunctionExpression') {
+              state.memoizedFunctions.push(func);
+            }
+          }
         }
       }
     }
   }
 
+  /**
+   * Look for anonymous async components and memoize then
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
+  function visitFunctionExpression(path, state) {
+    const func = path.node;
+    if (state.memoizedFunctions.indexOf(func) !== -1) {
+      return;
+    }
+    if (func.async && isUsingHook(path, state)) {
+      const call = memoizeFunction(func, state);
+      path.replaceWith(call);
+    }
+  }
+
+  /**
+   * Remembering left-hand-side variable name, initiate search for anonymous
+   * functions
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
+  function visitVariableDeclarator(path, state) {
+    const visitor = {
+      ArrowFunctionExpression: visitArrowFunctionExpressionHOC,
+      FunctionExpression: visitFunctionExpressionHOC,
+    };
+    state.lhsVarId = path.node.id;
+    path.traverse(visitor, state);
+    state.lhsVarId = null;
+  }
+
+  /**
+   * Add name to arrow function passed to HOC (higher order component)
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
+  function visitArrowFunctionExpressionHOC(path, state) {
+    if (!state.lhsVarId) {
+      return;
+    }
+    const func = path.node;
+    if (state.memoizedFunctions.indexOf(func) !== -1) {
+      return;
+    }
+    if (path.parent.type === 'CallExpression') {
+      const qname = getFullyQualifiedName(path.parent.callee);
+      if (qname && state.hocs.indexOf(qname) !== -1) {
+        const id = state.lhsVarId;
+        const named = nameAnonymousFunction(id, func, state);
+        path.replaceWith(named);
+      }
+    }
+  }
+
+  /**
+   * Add name to anonymouso function passed to HOC (higher order component)
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
+  function visitFunctionExpressionHOC(path, state) {
+    if (!state.lhsVarId) {
+      return;
+    }
+    const func = path.node;
+    if (state.memoizedFunctions.indexOf(func) !== -1) {
+      return;
+    }
+    if (!path.node.id && path.parent.type === 'CallExpression') {
+      const qname = getFullyQualifiedName(path.parent.callee);
+      if (qname && state.hocs.indexOf(qname) !== -1) {
+        const id = state.lhsVarId;
+        const named = nameAnonymousFunction(id, func, state);
+        path.replaceWith(named);
+      }
+    }
+  }
+
+  /**
+   * Look for invocation of useProgress()
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   */
   function visitCallExpressionHook(path, state) {
     const { callee } = path.node;
     if (callee.type === 'Identifier' && callee.name === state.hook)  {
@@ -128,6 +263,14 @@ export default (babel) => {
     }
   }
 
+  /**
+   * Return true if useProgress() is used by the function in question
+   *
+   * @param  {NodePath} path
+   * @param  {Object} state
+   *
+   * @return {boolean}
+   */
   function isUsingHook(path, state) {
     const visitor = { CallExpression: visitCallExpressionHook };
     state.hookCalled = false;
@@ -135,30 +278,71 @@ export default (babel) => {
     return state.hookCalled;
   }
 
+  /**
+   * Wrap function with Relaks.memo()
+   *
+   * @param  {Node} path
+   * @param  {Object} state
+   *
+   * @return {Node}
+   */
   function memoizeFunction(func, state) {
     const { id, params, body } = func;
     const relaks = t.identifier(state.relaks);
     const memo = t.identifier('memo');
     const callee = t.memberExpression(relaks, memo);
     const expr = t.functionExpression(id, params, body, false, true);
+    state.memoizedFunctions.push(expr);
     return t.callExpression(callee, [ expr ]);
   }
 
-  function nameArrowFunction(id, arrowFunc, state) {
+  /**
+   * Convert an anonymous function to a named one
+   *
+   * @param  {Node} id
+   * @param  {Node} arrowFunc
+   * @param  {Object} state
+   *
+   * @return {Node}
+   */
+  function nameAnonymousFunction(id, arrowFunc, state) {
     const { params, body, generator, async } = arrowFunc;
     return t.functionExpression(id, params, body, generator, async);
   }
 
+  /**
+   * Create an constant assignment expression
+   *
+   * @param  {Node} id
+   * @param  {Node} init
+   * @param  {Object} state
+   *
+   * @return {Node}
+   */
   function declareConstant(id, init, state) {
     const varDecl = t.variableDeclarator(id, init);
     return t.variableDeclaration('const', [ varDecl ]);
   }
 
+  /**
+   * Generate an id for exporting a constant
+   *
+   * @param  {Object} state
+   *
+   * @return {Node}
+   */
   function generateDefaultId(state) {
     const name = '__defMemoized' + state.defaultExport++;
     return t.identifier(name);
   }
 
+  /**
+   * Get full qualified name of a function call
+   *
+   * @param  {Node} callee
+   *
+   * @return {string}
+   */
   function getFullyQualifiedName(callee) {
     const names = [];
     let expr = callee;

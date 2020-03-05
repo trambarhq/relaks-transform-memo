@@ -37,6 +37,44 @@ export { Hello };
     const transpiled = transpile(code);
     expect(transpiled).to.equal(expected);
   })
+  it('should apply Relaks.memo() to anonymous component', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+export const Hello = Overlay.create(async function(props) {
+  const [ show ] = useProgress();
+  show(<div>Test</div>);
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+export const Hello = Overlay.create(Relaks.memo(async function (props) {
+  const [show] = useProgress();
+  show(React.createElement("div", null, "Test"));
+}));
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should apply Relaks.memo() to arrow function component', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+export const Hello = Overlay.create(async (props) => {
+  const [ show ] = useProgress();
+  show(<div>Test</div>);
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+export const Hello = Overlay.create(Relaks.memo(async function (props) {
+  const [show] = useProgress();
+  show(React.createElement("div", null, "Test"));
+}));
+    `.trim();
+    const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
   it('should correctly handle inline export statement', function() {
     const code = `
 import Relaks, { useProgress } from 'relaks';
@@ -323,6 +361,26 @@ import Relaks, { useProgress } from 'relaks';
 const Test = React.memo(props => {});
     `.trim();
     const options = { hocs: [] };
+    const transpiled = transpile(code, options);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should add name and memoize at the same time', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+export const Hello = Overlay.create(async (props) => {
+  const [ show ] = useProgress();
+  show(<div>Test</div>);
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+export const Hello = Overlay.create(Relaks.memo(async function Hello(props) {
+  const [show] = useProgress();
+  show(React.createElement("div", null, "Test"));
+}));
+    `.trim();
+    const options = { otherHOCs: [ 'Overlay.create' ] };
     const transpiled = transpile(code, options);
     expect(transpiled).to.equal(expected);
   })

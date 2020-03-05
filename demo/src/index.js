@@ -14,10 +14,7 @@ function update() {
   try {
     const original = localStorage['input'] = input.value;
     const options = {
-      otherHOCs: [
-        'Overlay.create',
-        'Orange'
-      ]
+      otherHOCs: []
     };
     const result = transform(original, {
       presets: [ 'react' ],
@@ -26,6 +23,5 @@ function update() {
     const transpiled = result.code;
     output.value = transpiled;
   } catch (err) {
-    console.log(err.message);
   }
 }
