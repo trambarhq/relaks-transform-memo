@@ -4,10 +4,10 @@ const transformMemo = require('../lib/index.js') ;
 
 registerPlugin('transform-memo', transformMemo);
 
-function transpile(code) {
+function transpile(code, options) {
   const result = transform(code, {
     presets: [ 'react' ],
-    plugins: [ 'transform-memo' ],
+    plugins: [ [ 'transform-memo', options ] ],
   });
   return result.code;
 }
@@ -294,6 +294,36 @@ const Test = Relaks.use(async function Test(props) {
 });
     `.trim();
     const transpiled = transpile(code);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should accept list of additional higher order components', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+const Test = Rocket.build((props) => {
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+const Test = Rocket.build(function Test(props) {});
+    `.trim();
+    const options = { otherHOCs: [ 'Rocket.build' ] };
+    const transpiled = transpile(code, options);
+    expect(transpiled).to.equal(expected);
+  })
+  it('should allow list of higher order components to be overridden', function() {
+    const code = `
+import Relaks, { useProgress } from 'relaks';
+
+const Test = React.memo((props) => {
+});
+    `.trim();
+    const expected = `
+import Relaks, { useProgress } from 'relaks';
+const Test = React.memo(props => {});
+    `.trim();
+    const options = { hocs: [] };
+    const transpiled = transpile(code, options);
     expect(transpiled).to.equal(expected);
   })
   it('should ignore calls to React.memo() that are not assigned to variables', function() {

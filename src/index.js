@@ -87,34 +87,57 @@ export default (babel) => {
     },
     CallExpression(path, state) {
       const { callee, arguments: args } = path.node;
-      if (callee.type === 'MemberExpression') {
-        if (args[0] && args[0].type === 'ArrowFunctionExpression') {
-          const [ arrowFunc, ...otherArgs ] = args;
-          const { object, property } = callee;
-          if (object.type === 'Identifier' && property.type === 'Identifier') {
-            let methods;
-            if (object.name === state.react) {
-              methods = [ 'memo', 'forwardRef' ];
-            } else if (object.name === state.relaks) {
-              methods = [ 'memo', 'use' ];
-            }
-            if (methods && methods.indexOf(property.name) !== -1) {
-              if (path.parent.type === 'VariableDeclarator') {
-                const { params, body, generator, async } = arrowFunc;
-                const id = t.identifier(path.parent.id.name);
-                const func = t.functionExpression(id, params, body, generator, async);
-                const call = t.callExpression(callee, [ func, ...otherArgs ]);
-                path.replaceWith(call);
-              }
-            }
+      if (args[0] && args[0].type === 'ArrowFunctionExpression') {
+        const [ arrowFunc, ...otherArgs ] = args;
+        const names = [];
+        let expr = callee;
+        let unexpected = false;
+        while (expr && !unexpected) {
+          if (expr.type === 'Identifier') {
+            names.push(expr.name);
+            expr = null;
+          } else if (expr.type === 'MemberExpression' && expr.object.type === 'Identifier') {
+            names.push(expr.object.name);
+            expr = expr.property;
+          } else {
+            unexpected = true;
+          }
+        }
+        if (unexpected) {
+          return;
+        }
+        if (state.hocs.indexOf(names.join('.')) !== -1) {
+          if (path.parent.type === 'VariableDeclarator') {
+            const { params, body, generator, async } = arrowFunc;
+            const id = t.identifier(path.parent.id.name);
+            const func = t.functionExpression(id, params, body, generator, async);
+            const call = t.callExpression(callee, [ func, ...otherArgs ]);
+            path.replaceWith(call);
           }
         }
       }
     }
   };
   const programVisitor = {
-    Program(path) {
+    Program(path, plugin) {
+      let {
+        hocs,
+        otherHOCs,
+      } = plugin.opts;
+      if (!hocs) {
+        hocs = [
+          'Relaks.use',
+          'Relaks.memo',
+          'React.memo',
+          'React.forwardRef',
+        ];
+      }
+      if (otherHOCs) {
+        hocs = [ ...hocs, ...otherHOCs ];
+      }
+
       const state = {
+        hocs,
         hook: null,
         hookCalled: false,
         memoized: false,
