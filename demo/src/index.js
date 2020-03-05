@@ -6,9 +6,13 @@ registerPlugin('transform-memo', transformMemo);
 const input = document.getElementById('input');
 const output = document.getElementById('output');
 
-input.addEventListener('input', () => {
+input.value = localStorage['input'] || '';
+update();
+input.addEventListener('input', update);
+
+function update() {
   try {
-    const original = input.value;
+    const original = localStorage['input'] = input.value;
     const result = transform(original, {
       presets: [ 'react' ],
       plugins: [ 'transform-memo' ],
@@ -17,4 +21,4 @@ input.addEventListener('input', () => {
     output.value = transpiled;
   } catch (err) {
   }
-});
+}
